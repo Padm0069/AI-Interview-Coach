@@ -28,7 +28,7 @@ export default function Result({ setTextData, setConfidenceScore, transcript }) 
     if (score !== null && setConfidenceScore) {
       setConfidenceScore(score);
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fullText]); // re-run when transcript text is ready
 
   return (
     <div>
