@@ -62,6 +62,7 @@ function App() {
         formatTimer={interview.formatTimer}
         showSilenceWarning={interview.showSilenceWarning}
         practiceMode={practiceMode}
+        recorderKey={interview.recorderKey}
         onAudioStop={interview.handleAudioStop}
         onAudioUpload={interview.handleAudioUpload}
         onReset={interview.handleReset}
