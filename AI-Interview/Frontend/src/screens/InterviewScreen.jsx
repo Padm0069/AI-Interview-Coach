@@ -2,10 +2,9 @@ import {
   Box, VStack, HStack, Text, Badge, SimpleGrid, Alert, AlertIcon,
 } from '@chakra-ui/react';
 import { motion } from 'framer-motion';
-import { Recorder } from 'react-voice-recorder';
-import 'react-voice-recorder/dist/index.css';
 import Status from '../Status';
 import Result from '../Result';
+import AudioRecorder from '../components/AudioRecorder';
 
 const MotionBox = motion(Box);
 
@@ -26,6 +25,7 @@ export default function InterviewScreen({
   formatTimer,
   showSilenceWarning,
   practiceMode,
+  recorderKey,
   onAudioStop,
   onAudioUpload,
   onReset,
@@ -132,12 +132,13 @@ export default function InterviewScreen({
 
         {/* Recorder */}
         <Box w="100%" bg="surface.100" border="1px solid" borderColor="surface.300" borderRadius="16px" p={4}>
-          <Recorder
-            record={true}
+          <AudioRecorder
+            key={`recorder-${recorderKey}`}
             audioURL={audioDetails.url}
-            handleAudioStop={onAudioStop}
-            handleAudioUpload={onAudioUpload}
-            handleReset={onReset}
+            isUploading={isLoading}
+            onAudioStop={onAudioStop}
+            onAudioUpload={onAudioUpload}
+            onReset={onReset}
           />
         </Box>
 
