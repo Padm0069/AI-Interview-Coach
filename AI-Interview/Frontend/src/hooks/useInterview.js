@@ -28,6 +28,7 @@ export function useInterview({ saveAttempt, practiceMode = false }) {
   const [wordCount, setWordCount] = useState(0);
   const [timer, setTimer] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [recorderKey, setRecorderKey] = useState(0); // Force recorder remount when needed
 
   // ── Per-question feedback & confidence ────────────────────────
   // perQuestionFeedback: array of { questionIdx, score, label, oneLineFeedback }
@@ -166,6 +167,7 @@ export function useInterview({ saveAttempt, practiceMode = false }) {
       setIsRecording(false);
       setSilenceSeconds(0);
       setShowSilenceWarning(false);
+      setRecorderKey(k => k + 1); // Force recorder remount for clean state
     }
   }, [textData]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -245,6 +247,23 @@ export function useInterview({ saveAttempt, practiceMode = false }) {
   };
 
   const handleAudioUpload = async () => {
+    // Prevent multiple simultaneous uploads
+    if (isLoading) {
+      console.log('Upload already in progress, ignoring duplicate click');
+      return;
+    }
+
+    // Check if there's actually audio to upload
+    if (!audioDetails.blob) {
+      toast({ 
+        title: 'No audio recorded', 
+        description: 'Please record your answer first.',
+        status: 'warning', 
+        duration: 2000 
+      });
+      return;
+    }
+
     setIsLoading(true);
     setTimerRunning(false);
     setIsRecording(false);
@@ -405,6 +424,7 @@ export function useInterview({ saveAttempt, practiceMode = false }) {
     handleRecordingStart,
     showSilenceWarning,
     setConfidenceScore: handleSetConfidenceScore,
+    recorderKey, // Key to force recorder remount
     // Results
     evaluation,
     isEvaluating,
