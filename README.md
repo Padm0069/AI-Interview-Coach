@@ -90,6 +90,8 @@ You speak your answers into the microphone. The app transcribes them, detects fi
 | 🎬 Demo Scenarios | Pre-loaded strong / weak / edge case question sets |
 | ⚠️ Silence Detection | Nudges user after 10 seconds of inactivity |
 | 🔁 Retry Logic | Auto-retries on Groq rate limit (429) with toast feedback |
+| 🛡️ Upload Protection | Prevents duplicate uploads with visual feedback and state guards |
+| 🔄 Smart Recorder Reset | Clean state transitions between questions without losing functionality |
 | 🎞️ Animations | Framer Motion screen transitions |
 
 ---
@@ -146,6 +148,10 @@ You speak your answers into the microphone. The app transcribes them, detects fi
     │   ├── App.js                         ← Root component, screen routing
     │   ├── constants.js                   ← Shared enums, filler words, demo scenarios
     │   ├── Result.js                      ← Transcript renderer + confidence score logic
+    │   ├── Status.js                      ← Loading state indicator during transcription
+    │   │
+    │   ├── components/
+    │   │   └── AudioRecorder.jsx          ← Wrapper for react-voice-recorder with upload protection
     │   │
     │   ├── hooks/
     │   │   ├── useInterview.js            ← ALL state, API calls, handlers (core logic)
@@ -177,6 +183,9 @@ The original Node.js version had `try/catch` in every route handler — repeated
 
 ### Why use `useRef` instead of `useState` for accumulated answers?
 Inside async callbacks and `setInterval`, React state is stale — you read the value from when the closure was created. `useRef` always gives the current value without causing re-renders. The answers array uses a ref so the polling effect always reads the latest state.
+
+### Why use a key prop to reset the recorder between questions?
+Third-party libraries with internal state (like `react-voice-recorder`) don't always respond correctly to prop changes. Setting `audioDetails` to `INITIAL_AUDIO_STATE` should reset the UI, but the library's internal recorder instance persists. Using a key prop (`key={recorderKey}`) that increments on each question transition forces React to unmount and remount the component entirely, giving the library a clean slate. This is the React-recommended pattern for resetting component state that you don't control.
 
 ### Why poll AssemblyAI instead of using webhooks?
 Webhooks require a publicly accessible URL. Polling `GET /api/assembly/transcript/{id}` every 1 second through the backend works for a local app with negligible latency difference on 10-30 second recordings. The server just proxies a lightweight GET — no thread is blocked waiting.
@@ -245,6 +254,108 @@ Load pre-built scenarios from the Setup screen without waiting for question gene
 | 💪 Strong Answer | Mid-level SWE questions — expect `Hire` or `Strong Hire` |
 | 😬 Weak Answer | Junior basics — expect `No Hire`, good contrast demo |
 | ⚠️ Edge Case | Senior system design — shows silence warning + error handling |
+
+---
+
+## ⚡ Technical Challenges & Solutions
+
+### Challenge 1: Duplicate Upload Requests
+**Problem:** Users could click the "Upload" button multiple times while audio was processing. This triggered simultaneous API calls to AssemblyAI, causing:
+- Race conditions in transcript polling
+- Conflicting state updates
+- Upload failures or stuck UI states
+- Backend logs showing multiple concurrent transcription jobs
+
+**Root Cause:** The `handleAudioUpload` function had no guard against concurrent execution. When `isLoading` was true (transcription in progress), subsequent clicks would start new upload flows.
+
+**Solution (3 Layers of Defense):**
+
+1. **Logic Guard** — Added early return in `handleAudioUpload()`:
+```javascript
+if (isLoading) {
+  console.log('Upload already in progress, ignoring duplicate click');
+  return;
+}
+```
+
+2. **Visual Feedback** — Created `AudioRecorder.jsx` wrapper component:
+   - Dims recorder to 60% opacity when `isUploading={true}`
+   - Disables pointer events (`pointerEvents: 'none'`)
+   - Shows "Processing..." overlay text
+   - Smooth opacity transition for better UX
+
+3. **Validation Check** — Prevents empty uploads:
+```javascript
+if (!audioDetails.blob) {
+  toast({ 
+    title: 'No audio recorded', 
+    description: 'Please record your answer first.',
+    status: 'warning'
+  });
+  return;
+}
+```
+
+**Files Changed:**
+- `hooks/useInterview.js` — Added upload guards and validation
+- `components/AudioRecorder.jsx` — New wrapper with disabled state
+- `screens/InterviewScreen.jsx` — Replaced direct `Recorder` with `AudioRecorder`
+
+---
+
+### Challenge 2: Recorder State Corruption Between Questions
+**Problem:** When moving from question 1 to question 2, the microphone button disappeared. Users saw:
+- Missing record button
+- "Give me audio!" text appearing incorrectly
+- Broken recorder UI state
+- No way to record the next answer
+
+**Root Cause:** The `react-voice-recorder` library maintains internal state that wasn't properly resetting when:
+1. Audio state was cleared (`setAudioDetails(INITIAL_AUDIO_STATE)`)
+2. Component remained mounted across question transitions
+3. Library's internal state became desynchronized with React props
+
+**Solution:**
+
+1. **Controlled Remount** — Added `recorderKey` state that increments when moving to next question:
+```javascript
+// In useInterview.js
+const [recorderKey, setRecorderKey] = useState(0);
+
+// When moving to next question:
+setRecorderKey(k => k + 1); // Force recorder remount
+```
+
+2. **Key Prop Strategy** — Applied key to force clean remount:
+```javascript
+<AudioRecorder
+  key={`recorder-${recorderKey}`}  // Changes on each question
+  audioURL={audioDetails.url}
+  isUploading={isLoading}
+  {...handlers}
+/>
+```
+
+This causes React to:
+- Unmount the old recorder instance completely
+- Mount a fresh recorder with clean internal state
+- Restore the microphone button and functionality
+
+3. **Status Component Cleanup** — Removed confusing "Give me audio!" message:
+```javascript
+// Status.js now returns null when not loading
+if (!isLoading) return null;
+```
+
+**Files Changed:**
+- `hooks/useInterview.js` — Added `recorderKey` state and increment logic
+- `screens/InterviewScreen.jsx` — Applied key prop to AudioRecorder
+- `components/AudioRecorder.jsx` — Added reset lifecycle handling
+- `Status.js` — Simplified to only show during loading
+- `App.js` — Passed `recorderKey` through component tree
+
+**Why This Works:**
+React's reconciliation algorithm uses the `key` prop to identify component instances. When the key changes, React knows it's a different component and performs a full unmount/mount cycle instead of updating props. This gives the third-party `react-voice-recorder` library a fresh start without carrying over stale internal state.
 
 ---
 
